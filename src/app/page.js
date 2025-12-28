@@ -1,41 +1,45 @@
+// Force dynamic rendering to avoid static generation issues
+export const dynamic = 'force-dynamic';
+
+import { connect } from '@/lib/mongodb/mongoose';
+import NewsArticle from '@/lib/models/newsArticle.model';
+
 export default async function NewsPage() {
   let newsData = null;
   let error = null;
-  let apiResponse = null;
 
   try {
-    // Use absolute URL for server-side fetch
-    // Remove filters to get ALL data from database
-    const baseUrl = process.env.NEXT_PUBLIC_URL || process.env.URL || 'http://localhost:3000';
-    const apiUrl = `${baseUrl}/api/news`; // No filters = get all data
-    
-    console.log('Fetching news from:', apiUrl);
-    
-    const res = await fetch(apiUrl, {
-      cache: 'no-store',
-      headers: {
-        'Content-Type': 'application/json',
+    // Connect to MongoDB
+    await connect();
+
+    // Fetch news articles directly from MongoDB, sorted by most recent first
+    const articles = await NewsArticle.find({})
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Transform MongoDB documents to match the expected format
+    newsData = articles.map((article) => ({
+      node: {
+        id: article.articleId,
+        articleTitle: {
+          plainText: article.articleTitle?.plainText || 'No title',
+        },
+        text: {
+          plainText: article.text?.plainText || '',
+        },
+        image: {
+          url: article.image?.url || null,
+        },
+        byline: article.byline || null,
+        date: article.date || article.createdAt,
+        externalUrl: article.externalUrl || null,
+        category: article.category,
+        country: article.country,
+        language: article.language,
       },
-    });
+    }));
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error('API error response:', res.status, errorText);
-      throw new Error(`Failed to fetch news: ${res.status} - ${errorText}`);
-    }
-
-    apiResponse = await res.json();
-    console.log('API response received:', {
-      hasData: !!apiResponse?.data,
-      hasNews: !!apiResponse?.data?.news,
-      edgesCount: apiResponse?.data?.news?.edges?.length || 0,
-    });
-    
-    newsData = apiResponse?.data?.news?.edges || [];
-    
-    if (newsData.length === 0 && apiResponse?.error) {
-      error = apiResponse.error;
-    }
+    console.log(`Fetched ${newsData.length} articles from database`);
   } catch (err) {
     console.error('Error fetching news:', err);
     error = err.message || 'Unknown error occurred';
@@ -48,7 +52,7 @@ export default async function NewsPage() {
         <p className='text-gray-600 mb-4'>{error}</p>
         <div className='bg-gray-100 dark:bg-gray-800 p-4 rounded text-left text-sm'>
           <p className='font-semibold mb-2'>Debug Info:</p>
-          <p>API Response: {apiResponse ? JSON.stringify(apiResponse, null, 2) : 'No response'}</p>
+          <p>Error: {error}</p>
         </div>
         <a 
           href='/api/news/fetch' 
@@ -85,7 +89,6 @@ export default async function NewsPage() {
           <div className='bg-gray-100 dark:bg-gray-800 p-4 rounded text-left text-sm mb-4'>
             <p className='font-semibold mb-2'>Debug Info:</p>
             <p>News Data: {newsData ? `Array with ${newsData.length} items` : 'null'}</p>
-            <p>API Response: {apiResponse ? JSON.stringify(apiResponse, null, 2) : 'No response'}</p>
           </div>
           <div className='space-x-4'>
             <a 
